@@ -16,8 +16,6 @@ class Debugger
     {
         self::$initialTimestamp = microtime(true);
         self::$enabled          = true;
-
-        self::add('debugger enabled');
     }
 
     public static function disable()
@@ -30,9 +28,40 @@ class Debugger
         return self::$enabled;
     }
 
+    public static function getMessages()
+    {
+        return self::$messages;
+    }
+
+    public static function getPeakMemory()
+    {
+        return memory_get_peak_usage();
+    }
+
+    public static function getDuration()
+    {
+        return microtime(true) - self::$initialTimestamp;
+    }
+
     public static function getInitialTimestamp()
     {
         return self::$initialTimestamp;
+    }
+
+
+    public static function add($text, $type = null, $callbacks = null)
+    {
+        if (!self::$enabled) {
+            return;
+        }
+
+        $message = new Message($text, $type, $callbacks);
+
+        if (self::$stackDepth) {
+            self::$blockStack[self::$stackDepth-1]->messages[] = $message;
+        } else {
+            self::$messages[] = $message;
+        }
     }
 
     public static function startBlock($text, $type = null, $callbacks = null)
@@ -70,36 +99,30 @@ class Debugger
         }
     }
 
-    public static function add($text, $type = null, $callbacks = null)
+    public static function toJson($pretty = true)
     {
-        if (!self::$enabled) {
+        $object            = new \stdClass;
+        $object->timestamp = self::getInitialTimestamp();
+        $object->duration  = self::getDuration();
+        $object->memory    = self::getPeakMemory();
+        $object->messages  = self::$messages;
+
+        return json_encode($object, $pretty ? JSON_PRETTY_PRINT : null);
+    }
+
+    public static function toHtml()
+    {
+        if (!$template = realpath(__DIR__."/template.php")) {
             return;
         }
 
-        $message = new Message($text, $type, $callbacks);
+        ob_start();
+            include $template;
+            $stdout = ob_get_contents();
+        ob_end_clean();
 
-        if (self::$stackDepth) {
-            self::$blockStack[self::$stackDepth-1]->messages[] = $message;
-        } else {
-            self::$messages[] = $message;
-        }
+        return $stdout;
     }
-
-    public static function getMessages()
-    {
-        return self::$messages;
-    }
-
-    public static function getPeakMemory()
-    {
-        return memory_get_peak_usage();
-    }
-
-    public static function getTotalTime()
-    {
-        return microtime(true) - self::$initialTimestamp;
-    }
-
 
     public static function flush()
     {
@@ -107,12 +130,8 @@ class Debugger
             return;
         }
 
-        if (! $template = realpath(__DIR__."/../template.php")) {
-            return;
-        }
-
         self::collapseAll();
-        include $template;
+        echo $this->toHtml();
     }
 
 }
